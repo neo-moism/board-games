@@ -3,7 +3,5 @@
 [workspace]
 members = [
 	"server",
-	"gomoku"
+	"gomoku",
 ]
-
-[dependencies]
