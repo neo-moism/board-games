@@ -1,9 +1,33 @@
 #![allow(dead_code)]
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[test]
     fn it_works() {
+        let mut board = Board::default();
+        board.put_piece(Chessman::Black, 7, 7);
+        board.put_piece(Chessman::White, 6, 6);
+        board.put_piece(Chessman::Black, 6, 7);
+        board.put_piece(Chessman::White, 5, 7);
+        board.put_piece(Chessman::Black, 5, 6);
+        board.put_piece(Chessman::White, 7, 5);
+        board.put_piece(Chessman::Black, 8, 4);
+        board.put_piece(Chessman::White, 4, 8);
+        board.put_piece(Chessman::Black, 3, 9);
+        board.put_piece(Chessman::White, 6, 8);
+        board.put_piece(Chessman::Black, 8, 7);
+        board.put_piece(Chessman::White, 5, 8);
+        board.put_piece(Chessman::Black, 3, 8);
+        board.put_piece(Chessman::White, 4, 6);
+        board.put_piece(Chessman::Black, 3, 5);
+        board.put_piece(Chessman::White, 4, 7);
+        board.put_piece(Chessman::Black, 4, 5);
+        board.put_piece(Chessman::White, 3, 6);
+        board.put_piece(Chessman::Black, 7, 8);
+        board.put_piece(Chessman::White, 6, 9);
         assert_eq!(2 + 2, 4);
+        board.put_piece(Chessman::Black, 8, 9);
+        board.put_piece(Chessman::White, 7, 10);
     }
 }
 
@@ -45,14 +69,15 @@ impl Board {
             .collect()
     }
 
-    fn put_piece(&mut self, c: Chessman, x: usize, y: usize) {
+    pub fn put_piece(&mut self, c: Chessman, x: usize, y: usize) {
         let ok = self.check(c, x, y);
         if !ok {
             return;
         }
         self.states[x][y] = Some(c);
         self.last = c;
-        let _ = self.wins();
+        let w = self.wins();
+        println!("Win: {}", w);
     }
 
     fn check(&self, c: Chessman, x: usize, y: usize) -> bool {
@@ -66,7 +91,7 @@ impl Board {
         if Chessman::Black == c {
             // TODO check
         }
-        false
+        true
     }
 
     fn wins(&self) -> bool {
