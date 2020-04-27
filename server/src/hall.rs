@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Instant;
 
 pub trait HallStorage {
@@ -29,7 +30,7 @@ pub(crate) struct Hall<S: HallStorage> {
     online_users: HashMap<String, Arc<User>>,
     gomuku_q: VecDeque<(String, Instant)>,
     queued_users: HashSet<String>,
-    gomuku_rooms: HashMap<String, Arc<GomokuRoom>>,
+    gomuku_rooms: HashMap<String, Arc<Mutex<GomokuRoom>>>,
 }
 
 struct User {
@@ -53,7 +54,7 @@ impl<S: HallStorage> Hall<S> {
         self.online_users.remove(username);
     }
 
-    fn play_gomoku(&mut self, player: &String) -> Option<Arc<GomokuRoom>> {
+    fn play_gomoku(&mut self, player: &String) -> Option<Arc<Mutex<GomokuRoom>>> {
         if self.queued_users.contains(player) {
             // Waiting for a target
             return None;
@@ -69,7 +70,7 @@ impl<S: HallStorage> Hall<S> {
                     white: player.clone(),
                     history: vec![],
                 };
-                let room = Arc::new(room);
+                let room = Arc::new(Mutex::new(room));
                 self.gomuku_rooms.insert(player.clone(), room.clone());
                 self.gomuku_rooms.insert(another, room.clone());
                 return Some(room);

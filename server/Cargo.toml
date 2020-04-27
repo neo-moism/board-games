@@ -8,3 +8,7 @@ edition = "2018"
 
 [dependencies]
 gomoku = { path = "../gomoku" }
+actix-rt = "1.1.0"
+actix-web = "2.0.0"
+serde_json = "1.0.51"
+serde = { version = "1.0.106",  features = ["derive"] }
