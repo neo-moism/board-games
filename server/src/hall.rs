@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 use actix::prelude::*;
 use gomoku;
+use rand::prelude::*;
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Instant;
 
 #[derive(Message)]
@@ -23,23 +23,59 @@ pub struct GomokuRoom {
     history: Vec<(gomoku::Chessman, usize, usize)>,
     black: usize,
     white: usize,
+    black_ready: bool,
+    whilte_ready: bool,
+    black_r: Recipient<StrMsg>,
+    white_r: Recipient<StrMsg>,
+}
+
+pub enum GomokuState {
+    Waiting,
+    NotReady,
+    Playing,
 }
 impl Actor for GomokuRoom {
     type Context = Context<Self>;
 }
-impl Handler<PutChessman> for GomokuRoom {
-    type Result = <PutChessman as Message>::Result;
-    fn handle(&mut self, msg: PutChessman, _: &mut Self::Context) -> Self::Result {
-        let c = if msg.black {
-            gomoku::Chessman::Black
-        } else {
-            gomoku::Chessman::White
-        };
-        let r = self.board.put_piece(c, msg.x, msg.y);
-        if r.is_ok() {
-            self.history.push((c, msg.x, msg.y));
+
+impl Handler<GomokuMsg> for GomokuRoom {
+    type Result = <GomokuMsg as Message>::Result;
+    fn handle(&mut self, msg: GomokuMsg, _: &mut Self::Context) {
+        match msg {
+            GomokuMsg::Ready(id) => {
+                if self.black == id && !self.black_ready {
+                    self.black_ready = true;
+                }
+                if self.white == id && !self.whilte_ready {
+                    self.whilte_ready = true;
+                }
+                if self.whilte_ready && self.black_ready {
+                    let _ = self.black_r.do_send(StrMsg("playing".to_string()));
+                    let _ = self.white_r.do_send(StrMsg("playing".to_string()));
+                } else {
+                    if self.black == id {
+                        let _ = self.black_r.do_send(StrMsg("not_ready".to_string()));
+                    } else {
+                        let _ = self.white_r.do_send(StrMsg("not_ready".to_string()));
+                    }
+                }
+            }
+            GomokuMsg::Put(id, x, y) => {
+                let c = if self.black == id {
+                    gomoku::Chessman::Black
+                } else {
+                    gomoku::Chessman::White
+                };
+                let r = self.board.put_piece(c, x, y);
+                if r.is_ok() {
+                    self.history.push((c, x, y));
+                }
+                // TODO send result to players
+            }
+            _ => {
+                // TODO
+            }
         }
-        r
     }
 }
 
@@ -49,7 +85,7 @@ pub struct Hall {
     online_users: HashMap<usize, Arc<User>>,
     gomoku_q: VecDeque<(usize, Instant)>,
     gomoku_queued_users: HashSet<usize>,
-    gomoku_rooms: HashMap<usize, Arc<Mutex<GomokuRoom>>>,
+    gomoku_rooms: HashMap<usize, Addr<GomokuRoom>>,
 }
 
 impl Actor for Hall {
@@ -69,12 +105,42 @@ pub struct Connect {
     pub name: String,
 }
 
+// TODO
 #[derive(Message)]
 #[rtype("()")]
+pub enum HallMsg {
+    Gomoku(GomokuMsg),
+    Chat(ChatMsg),
+}
+
+#[derive(Message)]
+#[rtype("()")]
+pub enum GomokuMsg {
+    Ready(usize),
+    Put(usize, usize, usize),
+    Quit(usize),
+}
+
 pub struct ChatMsg {
     pub content: String,
     pub name: String,
 }
+
+#[derive(Message)]
+#[rtype(result = "Result<GomokuState, ()>")]
+pub struct GomokuStart(pub usize);
+
+#[derive(Message)]
+#[rtype("()")]
+pub struct GomokuReady(pub usize);
+
+#[derive(Message)]
+#[rtype("()")]
+pub struct GomokuCancel(pub usize);
+
+#[derive(Message)]
+#[rtype("()")]
+pub struct GomokuQuit(pub usize);
 
 #[derive(Message)]
 #[rtype("()")]
@@ -103,32 +169,54 @@ impl Handler<Disconnect> for Hall {
         self.online_users.remove(&id);
         self.sessions.remove(&id);
         self.gomoku_queued_users.remove(&id);
-        // TODO send to the room if exists
+        if let Some(_addr) = self.gomoku_rooms.get(&id) {
+            // TODO addr.do_send();
+        }
+        self.gomoku_rooms.remove(&id);
     }
 }
 
-// Broadcast demo
-impl Handler<ChatMsg> for Hall {
+impl Handler<HallMsg> for Hall {
     type Result = ();
-    fn handle(&mut self, msg: ChatMsg, _: &mut Context<Hall>) {
-        let ChatMsg { content, mut name } = msg;
-        name.push(':');
-        name.push(' ');
-        name.push_str(&content);
-        for s in self.sessions.values() {
-            let _ = s.do_send(StrMsg(name.clone()));
-        }
+    fn handle(&mut self, msg: HallMsg, _: &mut Context<Hall>) {
+        match msg {
+            // Broadcast
+            HallMsg::Chat(msg) => {
+                let ChatMsg { content, mut name } = msg;
+                name.push(':');
+                name.push(' ');
+                name.push_str(&content);
+                for s in self.sessions.values() {
+                    let _ = s.do_send(StrMsg(name.clone()));
+                }
+            }
+            HallMsg::Gomoku(msg) => match msg {
+                GomokuMsg::Ready(id) => {
+                    if let Some(addr) = self.gomoku_rooms.get(&id) {
+                        addr.do_send(msg);
+                    }
+                }
+                _ => {
+                    // TODO
+                }
+            },
+        };
     }
 }
 
-use rand::prelude::*;
-
-impl Hall {
-    fn play_gomoku(&mut self, player: &usize) -> Option<Arc<Mutex<GomokuRoom>>> {
-        if self.gomoku_queued_users.contains(player) {
-            // Waiting for a target
-            return None;
+impl Handler<GomokuStart> for Hall {
+    type Result = <GomokuStart as Message>::Result;
+    fn handle(&mut self, msg: GomokuStart, _ctx: &mut Context<Hall>) -> Result<GomokuState, ()> {
+        let GomokuStart(player) = msg;
+        if self.gomoku_rooms.contains_key(&player) {
+            // TODO room invalid?
+            return Ok(GomokuState::Playing);
         }
+        if self.gomoku_queued_users.contains(&player) {
+            // Waiting for a target
+            return Ok(GomokuState::Waiting);
+        }
+
         while !self.gomoku_q.is_empty() {
             let (another, _) = self.gomoku_q.pop_front().unwrap();
             // Check if the target canceled
@@ -136,19 +224,24 @@ impl Hall {
                 // Matched, create a room
                 let room = GomokuRoom {
                     board: gomoku::Board::default(),
-                    black: another.clone(),
-                    white: player.clone(),
+                    black: another,
+                    white: player,
                     history: vec![],
+                    whilte_ready: false,
+                    black_ready: false,
+                    // TODO
+                    black_r: self.sessions.get(&another).unwrap().clone(),
+                    white_r: self.sessions.get(&player).unwrap().clone(),
                 };
-                let room = Arc::new(Mutex::new(room));
-                self.gomoku_rooms.insert(player.clone(), room.clone());
-                self.gomoku_rooms.insert(another, room.clone());
-                return Some(room);
+                let addr = room.start();
+                self.gomoku_rooms.insert(player.clone(), addr.clone());
+                self.gomoku_rooms.insert(another, addr);
+                return Ok(GomokuState::NotReady);
             }
         }
         // Just wait for another guy
         self.gomoku_q.push_back((player.clone(), Instant::now()));
         self.gomoku_queued_users.insert(player.clone());
-        return None;
+        return Ok(GomokuState::Waiting);
     }
 }

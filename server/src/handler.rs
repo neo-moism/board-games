@@ -85,10 +85,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for GameSession {
             ws::Message::Text(text) => {
                 let segs: Vec<&str> = text.splitn(2, ' ').collect();
                 if segs[0] == "/chat" {
-                    self.addr.do_send(hall::ChatMsg {
+                    self.addr.do_send(hall::HallMsg::Chat(hall::ChatMsg {
                         name: self.name.clone(),
                         content: segs.last().unwrap().to_string(),
-                    });
+                    }));
                 }
             }
             ws::Message::Binary(_) => println!("Unexpected binary"),
