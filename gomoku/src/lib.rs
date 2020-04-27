@@ -1,35 +1,6 @@
 #![allow(dead_code)]
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn it_works() {
-        let mut board = Board::default();
-        board.put_piece(Chessman::Black, 7, 7);
-        board.put_piece(Chessman::White, 6, 6);
-        board.put_piece(Chessman::Black, 6, 7);
-        board.put_piece(Chessman::White, 5, 7);
-        board.put_piece(Chessman::Black, 5, 6);
-        board.put_piece(Chessman::White, 7, 5);
-        board.put_piece(Chessman::Black, 8, 4);
-        board.put_piece(Chessman::White, 4, 8);
-        board.put_piece(Chessman::Black, 3, 9);
-        board.put_piece(Chessman::White, 6, 8);
-        board.put_piece(Chessman::Black, 8, 7);
-        board.put_piece(Chessman::White, 5, 8);
-        board.put_piece(Chessman::Black, 3, 8);
-        board.put_piece(Chessman::White, 4, 6);
-        board.put_piece(Chessman::Black, 3, 5);
-        board.put_piece(Chessman::White, 4, 7);
-        board.put_piece(Chessman::Black, 4, 5);
-        board.put_piece(Chessman::White, 3, 6);
-        board.put_piece(Chessman::Black, 7, 8);
-        board.put_piece(Chessman::White, 6, 9);
-        assert_eq!(2 + 2, 4);
-        board.put_piece(Chessman::Black, 8, 9);
-        board.put_piece(Chessman::White, 7, 10);
-    }
-}
+//#![deny(missing_docs)]
+//! Gomoku
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Chessman {
@@ -37,10 +8,20 @@ pub enum Chessman {
     White,
 }
 
+#[derive(Debug)]
+pub enum Error {
+    OutOfBounds,
+    InvalidPos,
+    OpNotAllowed,
+    NotYourTurn,
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
 const LINE_COUNT: usize = 15;
 
 pub struct Board {
-    states: [[Option<Chessman>; LINE_COUNT]; LINE_COUNT],
+    pub states: [[Option<Chessman>; LINE_COUNT]; LINE_COUNT],
     last: Chessman,
 }
 
@@ -54,7 +35,10 @@ impl Default for Board {
 }
 
 impl Board {
-    fn dump_states(&self) -> Vec<Vec<u8>> {
+    /// Dump states of all chessmen
+    /// None mapped to 0, black mapped to 1,
+    /// and white mapped to 2
+    pub fn dump_states(&self) -> Vec<Vec<u8>> {
         self.states
             .iter()
             .map(|l| {
@@ -69,29 +53,29 @@ impl Board {
             .collect()
     }
 
-    pub fn put_piece(&mut self, c: Chessman, x: usize, y: usize) {
-        let ok = self.check(c, x, y);
-        if !ok {
-            return;
-        }
+    /// Put a chessman on the board
+    pub fn put_piece(&mut self, c: Chessman, x: usize, y: usize) -> Result<bool> {
+        self.check(c, x, y)?;
         self.states[x][y] = Some(c);
         self.last = c;
         let w = self.wins();
-        println!("Win: {}", w);
+        Ok(w)
     }
 
-    fn check(&self, c: Chessman, x: usize, y: usize) -> bool {
-        if self.last == c || x >= LINE_COUNT || y >= LINE_COUNT {
-            // TODO err
-            return false;
+    fn check(&self, c: Chessman, x: usize, y: usize) -> Result<()> {
+        if x >= LINE_COUNT || y >= LINE_COUNT {
+            return Err(Error::OutOfBounds);
+        }
+        if self.last == c {
+            return Err(Error::NotYourTurn);
         }
         if self.states[x][y].is_some() {
-            return false;
+            return Err(Error::InvalidPos);
         }
         if Chessman::Black == c {
             // TODO check
         }
-        true
+        Ok(())
     }
 
     fn wins(&self) -> bool {
@@ -149,5 +133,42 @@ impl Board {
             }
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn put(board: &mut Board, c: Chessman, x: usize, y: usize, win: bool) {
+        let w = board.put_piece(c, x, y).unwrap();
+        assert_eq!(win, w);
+    }
+
+    #[test]
+    fn it_works() {
+        let mut board = Board::default();
+        put(&mut board, Chessman::Black, 7, 7, false);
+        put(&mut board, Chessman::White, 6, 6, false);
+        put(&mut board, Chessman::Black, 6, 7, false);
+        put(&mut board, Chessman::White, 5, 7, false);
+        put(&mut board, Chessman::Black, 5, 6, false);
+        put(&mut board, Chessman::White, 7, 5, false);
+        put(&mut board, Chessman::Black, 8, 4, false);
+        put(&mut board, Chessman::White, 4, 8, false);
+        put(&mut board, Chessman::Black, 3, 9, false);
+        put(&mut board, Chessman::White, 6, 8, false);
+        put(&mut board, Chessman::Black, 8, 7, false);
+        put(&mut board, Chessman::White, 5, 8, false);
+        put(&mut board, Chessman::Black, 3, 8, false);
+        put(&mut board, Chessman::White, 4, 6, false);
+        put(&mut board, Chessman::Black, 3, 5, false);
+        put(&mut board, Chessman::White, 4, 7, false);
+        put(&mut board, Chessman::Black, 4, 5, false);
+        put(&mut board, Chessman::White, 3, 6, false);
+        put(&mut board, Chessman::Black, 7, 8, false);
+        put(&mut board, Chessman::White, 6, 9, false);
+        put(&mut board, Chessman::Black, 8, 9, true);
+        put(&mut board, Chessman::White, 7, 10, true);
     }
 }
