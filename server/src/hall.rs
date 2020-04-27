@@ -11,7 +11,6 @@ use std::time::Instant;
 #[rtype(result = "()")]
 pub struct StrMsg(pub String);
 
-// ------------ GomokuRoom
 #[derive(Message)]
 #[rtype(result = "Result<bool, gomoku::Error>")]
 pub struct PutChessman {
@@ -43,9 +42,9 @@ impl Handler<PutChessman> for GomokuRoom {
         r
     }
 }
-// ------------ End of GomokuRoom
 
-pub(crate) struct Hall {
+#[derive(Default)]
+pub struct Hall {
     sessions: HashMap<usize, Recipient<StrMsg>>,
     online_users: HashMap<usize, Arc<User>>,
     gomoku_q: VecDeque<(usize, Instant)>,
@@ -67,6 +66,13 @@ struct User {
 #[rtype(usize)]
 pub struct Connect {
     pub addr: Recipient<StrMsg>,
+    pub name: String,
+}
+
+#[derive(Message)]
+#[rtype("()")]
+pub struct ChatMsg {
+    pub content: String,
     pub name: String,
 }
 
@@ -101,13 +107,23 @@ impl Handler<Disconnect> for Hall {
     }
 }
 
+// Broadcast demo
+impl Handler<ChatMsg> for Hall {
+    type Result = ();
+    fn handle(&mut self, msg: ChatMsg, _: &mut Context<Hall>) {
+        let ChatMsg { content, mut name } = msg;
+        name.push(':');
+        name.push(' ');
+        name.push_str(&content);
+        for s in self.sessions.values() {
+            let _ = s.do_send(StrMsg(name.clone()));
+        }
+    }
+}
+
 use rand::prelude::*;
 
 impl Hall {
-    fn logout(&mut self, player_id: usize) {
-        self.online_users.remove(&player_id);
-    }
-
     fn play_gomoku(&mut self, player: &usize) -> Option<Arc<Mutex<GomokuRoom>>> {
         if self.gomoku_queued_users.contains(player) {
             // Waiting for a target

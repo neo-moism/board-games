@@ -1,45 +1,43 @@
-use actix::{Actor, StreamHandler};
+use actix::{Actor, Addr};
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
+use std::time::Instant;
 
 mod hall;
 mod handler;
 
-/// Define http actor
-#[derive(Debug)]
-struct MyWs;
-
-impl Actor for MyWs {
-    type Context = ws::WebsocketContext<Self>;
-}
-
-/// Handler for ws::Message message
-impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for MyWs {
-    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
-        match msg {
-            Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
-            Ok(ws::Message::Text(text)) => ctx.text(text),
-            Ok(ws::Message::Binary(bin)) => ctx.binary(bin),
-            _ => (),
-        }
-    }
-}
-use actix::Addr;
-
 async fn index(
     req: HttpRequest,
     stream: web::Payload,
-    data: web::Data<Addr<MyWs>>,
+    data: web::Data<Addr<hall::Hall>>,
 ) -> Result<HttpResponse, Error> {
-    let resp = ws::start(MyWs {}, &req, stream);
+    let s = handler::GameSession {
+        id: 0,
+        hb: Instant::now(),
+        _game: "".to_string(),
+        name: "".to_string(),
+        addr: data.get_ref().clone(),
+    };
+    let resp = ws::start(s, &req, stream);
     println!("{:?}", resp);
     resp
 }
 
+async fn hello(req: HttpRequest, _data: web::Data<Addr<hall::Hall>>) -> impl actix_web::Responder {
+    req.path().to_owned()
+}
+
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(move || App::new().route("/ws/", web::get().to(index)))
-        .bind("127.0.0.1:8088")?
-        .run()
-        .await
+    let addr = hall::Hall::default().start();
+    HttpServer::new(move || {
+        App::new()
+            .data(addr.clone())
+            .wrap(actix_web::middleware::Logger::default())
+            .route("/ws/", web::get().to(index))
+            .route("/hello/", web::get().to(hello))
+    })
+    .bind("127.0.0.1:8088")?
+    .run()
+    .await
 }
