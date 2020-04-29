@@ -59,16 +59,29 @@ impl Actor for GameSession {
 
 #[derive(Message)]
 #[rtype(result = "()")]
-pub struct StrMsg(pub String);
+pub enum Resp {
+    Str(String),
+    GomokuStart(Addr<hall::GomokuRoom>),
+}
 
 /// Handle messages from chat server, we simply send it to peer websocket
-impl Handler<StrMsg> for GameSession {
+impl Handler<Resp> for GameSession {
     type Result = ();
 
-    fn handle(&mut self, msg: StrMsg, ctx: &mut Self::Context) {
-        ctx.text(msg.0);
+    fn handle(&mut self, msg: Resp, ctx: &mut Self::Context) {
+        match msg {
+            Resp::Str(msg) => ctx.text(msg),
+            Resp::GomokuStart(addr) => {
+                if let Some(addr) = self.gomoku_room.take() {
+                    addr.do_send(hall::GomokuMsg::Quit(self.id));
+                }
+                self.gomoku_room = Some(addr);
+                // TODO send msg to client
+            }
+        }
     }
 }
+
 use actix::StreamHandler;
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for GameSession {

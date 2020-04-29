@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::handler::StrMsg;
+use crate::handler::Resp;
 use actix::prelude::*;
 use gomoku;
 use rand::prelude::*;
@@ -15,8 +15,8 @@ pub struct GomokuRoom {
     white: usize,
     black_ready: bool,
     whilte_ready: bool,
-    black_r: Recipient<StrMsg>,
-    white_r: Recipient<StrMsg>,
+    black_r: Recipient<Resp>,
+    white_r: Recipient<Resp>,
 }
 
 pub enum GomokuState {
@@ -28,25 +28,30 @@ impl Actor for GomokuRoom {
     type Context = Context<Self>;
 }
 
+use crate::handler;
 impl Handler<GomokuMsg> for GomokuRoom {
     type Result = <GomokuMsg as Message>::Result;
-    fn handle(&mut self, msg: GomokuMsg, _: &mut Self::Context) {
+    fn handle(&mut self, msg: GomokuMsg, ctx: &mut Self::Context) {
         match msg {
             GomokuMsg::Ready(id) => {
-                if self.black == id && !self.black_ready {
+                if self.black == id {
                     self.black_ready = true;
                 }
-                if self.white == id && !self.whilte_ready {
+                if self.white == id {
                     self.whilte_ready = true;
                 }
                 if self.whilte_ready && self.black_ready {
-                    let _ = self.black_r.do_send(StrMsg("playing".to_string()));
-                    let _ = self.white_r.do_send(StrMsg("playing".to_string()));
+                    let _ = self
+                        .black_r
+                        .do_send(handler::Resp::GomokuStart(ctx.address()));
+                    let _ = self
+                        .white_r
+                        .do_send(handler::Resp::GomokuStart(ctx.address()));
                 } else {
                     if self.black == id {
-                        let _ = self.black_r.do_send(StrMsg("not_ready".to_string()));
+                        let _ = self.black_r.do_send(Resp::Str("not_ready".to_string()));
                     } else {
-                        let _ = self.white_r.do_send(StrMsg("not_ready".to_string()));
+                        let _ = self.white_r.do_send(Resp::Str("not_ready".to_string()));
                     }
                 }
             }
@@ -62,8 +67,17 @@ impl Handler<GomokuMsg> for GomokuRoom {
                 }
                 // TODO send result to players
             }
-            GomokuMsg::Quit(_player) => {
-                // TODO
+            GomokuMsg::Quit(player) => {
+                if self.black == player {
+                    self.black = 0;
+                }
+                if self.white == player {
+                    self.white = 0;
+                }
+                // TODO Check if game finished, send result
+                if self.black == 0 && self.white == 0 {
+                    ctx.stop();
+                }
             }
         }
     }
@@ -71,7 +85,7 @@ impl Handler<GomokuMsg> for GomokuRoom {
 
 #[derive(Default)]
 pub struct Hall {
-    sessions: HashMap<usize, Recipient<StrMsg>>,
+    sessions: HashMap<usize, Recipient<Resp>>,
     online_users: HashMap<usize, Arc<User>>,
     gomoku_q: VecDeque<(usize, Instant)>,
     gomoku_queued_users: HashSet<usize>,
@@ -91,7 +105,7 @@ struct User {
 #[derive(Message)]
 #[rtype(usize)]
 pub struct Connect {
-    pub addr: Recipient<StrMsg>,
+    pub addr: Recipient<Resp>,
     pub name: String,
 }
 
@@ -102,7 +116,6 @@ pub enum HallMsg {
     StartGomoku(usize),
     CancelGomoku(usize),
     Chat(ChatMsg),
-    Gomoku(GomokuMsg),
 }
 
 #[derive(Message)]
@@ -163,7 +176,7 @@ impl Handler<HallMsg> for Hall {
                 name.push(' ');
                 name.push_str(&content);
                 for s in self.sessions.values() {
-                    let _ = s.do_send(StrMsg(name.clone()));
+                    let _ = s.do_send(Resp::Str(name.clone()));
                 }
             }
             HallMsg::StartGomoku(player) => {
@@ -175,18 +188,8 @@ impl Handler<HallMsg> for Hall {
                     .sessions
                     .get(&player)
                     .unwrap()
-                    .do_send(StrMsg("TODO canceled".to_owned()));
+                    .do_send(Resp::Str("TODO canceled".to_owned()));
             }
-            HallMsg::Gomoku(msg) => match msg {
-                GomokuMsg::Ready(id) => {
-                    if let Some(addr) = self.gomoku_rooms.get(&id) {
-                        addr.do_send(msg);
-                    }
-                }
-                _ => {
-                    // TODO
-                }
-            },
         };
     }
 }
@@ -199,7 +202,7 @@ impl Hall {
                 .sessions
                 .get(&player)
                 .unwrap()
-                .do_send(StrMsg("TODO playing".to_owned()));
+                .do_send(Resp::Str("TODO playing".to_owned()));
             return;
         }
         if self.gomoku_queued_users.contains(&player) {
@@ -207,7 +210,7 @@ impl Hall {
                 .sessions
                 .get(&player)
                 .unwrap()
-                .do_send(StrMsg("TODO waiting".to_owned()));
+                .do_send(Resp::Str("TODO waiting".to_owned()));
             return;
         }
         while !self.gomoku_q.is_empty() {
@@ -233,7 +236,7 @@ impl Hall {
                     .sessions
                     .get(&player)
                     .unwrap()
-                    .do_send(StrMsg("TODO not_ready".to_owned()));
+                    .do_send(Resp::Str("TODO not_ready".to_owned()));
                 return;
             }
         }
