@@ -14,8 +14,8 @@ async fn index(
     let s = handler::GameSession {
         id: 0,
         hb: Instant::now(),
-        _game: "".to_string(),
         name: "".to_string(),
+        gomoku_room: None,
         addr: data.get_ref().clone(),
     };
     let resp = ws::start(s, &req, stream);

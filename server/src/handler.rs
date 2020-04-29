@@ -3,20 +3,22 @@ use actix::prelude::*;
 use actix::Actor;
 use actix::Addr;
 use actix_web_actors::ws;
+use std::time::Duration;
 use std::time::Instant;
 
 pub struct GameSession {
     pub id: usize,
     pub hb: Instant,
-    pub _game: String,
     pub name: String,
+    pub gomoku_room: Option<Addr<hall::GomokuRoom>>,
     pub addr: Addr<hall::Hall>,
 }
+const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(10);
 
 impl GameSession {
     fn hb(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        ctx.run_interval(std::time::Duration::from_secs(1), |act, ctx| {
-            if Instant::now().duration_since(act.hb) > std::time::Duration::from_secs(10) {
+        ctx.run_interval(Duration::from_secs(1), |act, ctx| {
+            if Instant::now().duration_since(act.hb) > HEARTBEAT_TIMEOUT {
                 act.addr.do_send(hall::Disconnect(act.id));
                 ctx.stop();
                 return;
@@ -55,11 +57,15 @@ impl Actor for GameSession {
     }
 }
 
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct StrMsg(pub String);
+
 /// Handle messages from chat server, we simply send it to peer websocket
-impl Handler<hall::StrMsg> for GameSession {
+impl Handler<StrMsg> for GameSession {
     type Result = ();
 
-    fn handle(&mut self, msg: hall::StrMsg, ctx: &mut Self::Context) {
+    fn handle(&mut self, msg: StrMsg, ctx: &mut Self::Context) {
         ctx.text(msg.0);
     }
 }

@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use crate::handler::StrMsg;
 use actix::prelude::*;
 use gomoku;
 use rand::prelude::*;
@@ -7,17 +8,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct StrMsg(pub String);
-
-#[derive(Message)]
-#[rtype(result = "Result<bool, gomoku::Error>")]
-pub struct PutChessman {
-    pub black: bool,
-    pub x: usize,
-    pub y: usize,
-}
 pub struct GomokuRoom {
     board: gomoku::Board,
     history: Vec<(gomoku::Chessman, usize, usize)>,
@@ -72,7 +62,7 @@ impl Handler<GomokuMsg> for GomokuRoom {
                 }
                 // TODO send result to players
             }
-            _ => {
+            GomokuMsg::Quit(_player) => {
                 // TODO
             }
         }
@@ -109,8 +99,10 @@ pub struct Connect {
 #[derive(Message)]
 #[rtype("()")]
 pub enum HallMsg {
-    Gomoku(GomokuMsg),
+    StartGomoku(usize),
+    CancelGomoku(usize),
     Chat(ChatMsg),
+    Gomoku(GomokuMsg),
 }
 
 #[derive(Message)]
@@ -125,22 +117,6 @@ pub struct ChatMsg {
     pub content: String,
     pub name: String,
 }
-
-#[derive(Message)]
-#[rtype(result = "Result<GomokuState, ()>")]
-pub struct GomokuStart(pub usize);
-
-#[derive(Message)]
-#[rtype("()")]
-pub struct GomokuReady(pub usize);
-
-#[derive(Message)]
-#[rtype("()")]
-pub struct GomokuCancel(pub usize);
-
-#[derive(Message)]
-#[rtype("()")]
-pub struct GomokuQuit(pub usize);
 
 #[derive(Message)]
 #[rtype("()")]
@@ -190,6 +166,17 @@ impl Handler<HallMsg> for Hall {
                     let _ = s.do_send(StrMsg(name.clone()));
                 }
             }
+            HallMsg::StartGomoku(player) => {
+                self.start_gomoku(player);
+            }
+            HallMsg::CancelGomoku(player) => {
+                self.gomoku_queued_users.remove(&player);
+                let _ = self
+                    .sessions
+                    .get(&player)
+                    .unwrap()
+                    .do_send(StrMsg("TODO canceled".to_owned()));
+            }
             HallMsg::Gomoku(msg) => match msg {
                 GomokuMsg::Ready(id) => {
                     if let Some(addr) = self.gomoku_rooms.get(&id) {
@@ -204,19 +191,25 @@ impl Handler<HallMsg> for Hall {
     }
 }
 
-impl Handler<GomokuStart> for Hall {
-    type Result = <GomokuStart as Message>::Result;
-    fn handle(&mut self, msg: GomokuStart, _ctx: &mut Context<Hall>) -> Result<GomokuState, ()> {
-        let GomokuStart(player) = msg;
+impl Hall {
+    pub fn start_gomoku(&mut self, player: usize) {
         if self.gomoku_rooms.contains_key(&player) {
             // TODO room invalid?
-            return Ok(GomokuState::Playing);
+            let _ = self
+                .sessions
+                .get(&player)
+                .unwrap()
+                .do_send(StrMsg("TODO playing".to_owned()));
+            return;
         }
         if self.gomoku_queued_users.contains(&player) {
-            // Waiting for a target
-            return Ok(GomokuState::Waiting);
+            let _ = self
+                .sessions
+                .get(&player)
+                .unwrap()
+                .do_send(StrMsg("TODO waiting".to_owned()));
+            return;
         }
-
         while !self.gomoku_q.is_empty() {
             let (another, _) = self.gomoku_q.pop_front().unwrap();
             // Check if the target canceled
@@ -236,12 +229,15 @@ impl Handler<GomokuStart> for Hall {
                 let addr = room.start();
                 self.gomoku_rooms.insert(player.clone(), addr.clone());
                 self.gomoku_rooms.insert(another, addr);
-                return Ok(GomokuState::NotReady);
+                let _ = self
+                    .sessions
+                    .get(&player)
+                    .unwrap()
+                    .do_send(StrMsg("TODO not_ready".to_owned()));
+                return;
             }
         }
-        // Just wait for another guy
         self.gomoku_q.push_back((player.clone(), Instant::now()));
         self.gomoku_queued_users.insert(player.clone());
-        return Ok(GomokuState::Waiting);
     }
 }
