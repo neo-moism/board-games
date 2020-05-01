@@ -1,0 +1,24 @@
+[gd_scene load_steps=2 format=2]
+
+[ext_resource path="res://login_btn.gd" type="Script" id=1]
+
+[node name="login" type="Node2D"]
+
+[node name="username_text" type="TextEdit" parent="."]
+margin_left = 413.0
+margin_top = 143.0
+margin_right = 705.0
+margin_bottom = 204.0
+text = "asdfasdf"
+
+[node name="login_btn" type="Button" parent="."]
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = 431.0
+margin_top = 268.0
+margin_right = 679.0
+margin_bottom = 380.0
+text = "Biu~"
+script = ExtResource( 1 )
