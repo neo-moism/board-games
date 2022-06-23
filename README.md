@@ -1,1 +1,3 @@
 # Board games (WIP)
+
+Deprecated
